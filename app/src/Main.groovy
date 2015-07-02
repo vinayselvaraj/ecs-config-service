@@ -2,6 +2,8 @@ import org.apache.log4j.*
 import groovy.util.logging.*
 import com.amazonaws.services.ecs.*
 import com.amazonaws.services.ecs.model.*
+import com.amazonaws.services.ec2.*
+import com.amazonaws.services.ec2.model.*
 
 LOG = Logger.getInstance(getClass())
 
@@ -36,6 +38,53 @@ while(!done) {
   }
 }
 
-for(taskArn in taskArns) {
-  println taskArn
+if(taskArns.size > 0) {
+
+  // Describe Tasks
+  def descTasksRequest = new DescribeTasksRequest().withTasks(taskArns)
+  def descTasksResult = ecsClient.describeTasks(descTasksRequest)
+  def tasks = descTasksResult.tasks
+  
+  // Put task containers in a map
+  def taskContainerInstanceMap = new HashMap()
+  tasks.each { task->
+    def taskContainers = taskContainerInstanceMap.get(task.containerInstanceArn)
+    if(taskContainers == null) {
+      taskContainers = new ArrayList()
+    }
+    taskContainers.addAll(task.containers)
+    
+    taskContainerInstanceMap.put(task.containerInstanceArn, taskContainers)
+  }
+  
+  // Get container instances
+  def descContainerInstancesResult = ecsClient.describeContainerInstances(
+    new DescribeContainerInstancesRequest()
+      .withContainerInstances(taskContainerInstanceMap.keySet()))
+  def containerInstances = descContainerInstancesResult.containerInstances
+  
+  // Put container instances in a HashMap to lookup by Arn
+  def containerInstanceMap = new HashMap()
+  containerInstances.each { containerInstance ->
+    containerInstanceMap.put(containerInstance.containerInstanceArn, containerInstance)
+  }
+  
+  // Get EC2 instances for each container instance
+  def ec2Client = new AmazonEC2Client()
+  def ec2InstanceIds = new ArrayList()
+  containerInstances.each { containerInstance ->
+    ec2InstanceIds.add(containerInstance.ec2InstanceId)
+  }
+  def descInstancesResult = ec2Client.describeInstances(
+    new DescribeInstancesRequest().withInstanceIds(ec2InstanceIds))
+  
+  
+  taskContainerInstanceMap.keySet().each { taskContainerInstanceArn ->
+    def taskContainers = taskContainerInstanceMap.get(taskContainerInstanceArn)
+    def containerInstance = containerInstanceMap.get(taskContainerInstanceArn)
+    println taskContainers
+    println containerInstance    
+  }
+  
 }
+
