@@ -77,13 +77,24 @@ if(taskArns.size > 0) {
   }
   def descInstancesResult = ec2Client.describeInstances(
     new DescribeInstancesRequest().withInstanceIds(ec2InstanceIds))
+  def reservations = descInstancesResult.reservations
+  def instances = new ArrayList()
+  reservations.each { reservation ->
+    instances.addAll(reservation.instances)
+  }
   
-  
+  // Put ec2 instances in a HashMap to lookup by intance id
+  def instanceMap = new HashMap()
+  instances.each { instance->
+    instanceMap.put(instance.instanceId, instance)
+  }
+    
   taskContainerInstanceMap.keySet().each { taskContainerInstanceArn ->
     def taskContainers = taskContainerInstanceMap.get(taskContainerInstanceArn)
     def containerInstance = containerInstanceMap.get(taskContainerInstanceArn)
     println taskContainers
-    println containerInstance    
+    println containerInstance
+    println instanceMap.get(containerInstance.ec2InstanceId)
   }
   
 }
