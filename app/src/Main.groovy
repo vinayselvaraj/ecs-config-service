@@ -30,8 +30,28 @@ def containerInstanceMap = getContainerInstanceMap(tasks)
 def ec2InstanceMap = getEc2InstanceMap(containerInstanceMap.values())
 
 // Get map of task definitions <TaskDefinitionArn, TaskDefinition>
-def taskDefintionMap = getTaskDefintionMap(tasks)
+def taskDefinitionMap = getTaskDefinitionMap(tasks)
 
+// Get list of container definitions that contain the ECS_CONFIG_HANDLER_URL env variable
+def containerDefinitions = getValidContainerDefinitions(tasks, taskDefinitionMap)
+
+
+def getValidContainerDefinitions(def tasks, def taskDefinitionMap) {
+  tasks.each { task->
+    def remove = false
+        
+    def taskDefinition = taskDefinitionMap.get(task.taskDefinitionArn)
+    def containerDefinitions = taskDefinition.containerDefinitions
+    containerDefinitions.each { containerDefiniton->
+      def environmentVars = containerDefiniton.environment
+      environmentVars.each { envVar->
+        println envVar
+      }
+    }
+
+    //println taskDefinition
+  }
+}
 
 def getTasksForCluster() {
   
@@ -63,7 +83,7 @@ def getTasksForCluster() {
   return descTasksResult.tasks
 }
 
-def getTaskDefintionMap(def tasks) {
+def getTaskDefinitionMap(def tasks) {
   def taskDefinitionArns = new ArrayList()
   
   tasks.each { task->
