@@ -32,25 +32,68 @@ def ec2InstanceMap = getEc2InstanceMap(containerInstanceMap.values())
 // Get map of task definitions <TaskDefinitionArn, TaskDefinition>
 def taskDefinitionMap = getTaskDefinitionMap(tasks)
 
-// Get list of container definitions that contain the ECS_CONFIG_HANDLER_URL env variable
-def containerDefinitions = getValidContainerDefinitions(tasks, taskDefinitionMap)
+// Get map of container definitions
+def containerDefinitionMap = getContainerDefinitionsMap(tasks, taskDefinitionMap)
 
-
-def getValidContainerDefinitions(def tasks, def taskDefinitionMap) {
-  tasks.each { task->
-    def remove = false
-        
-    def taskDefinition = taskDefinitionMap.get(task.taskDefinitionArn)
-    def containerDefinitions = taskDefinition.containerDefinitions
-    containerDefinitions.each { containerDefiniton->
-      def environmentVars = containerDefiniton.environment
-      environmentVars.each { envVar->
-        println envVar
+tasks.each { task->
+  def containers = task.containers
+  containers.each { container->
+    def containerInstance = containerInstanceMap.get(task.containerInstanceArn)
+    def ec2Instance = ec2InstanceMap.get(containerInstance.ec2InstanceId)
+    def containerDefinition = containerDefinitionMap.get(container.name)
+    
+    // Check if container definition contains the cfg handler url env
+    def configHandlerPort = null
+    def configHandlerPath = null
+    
+    containerDefinition.environment.each { keyValuePair->
+      if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PORT")) {
+        configHandlerPort = keyValuePair.value
+      }
+      if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PATH")) {
+        configHandlerPath = keyValuePair.value
       }
     }
-
-    //println taskDefinition
+    
+    if(configHandlerPort != null && configHandlerPath != null) {
+      
+      def hostPort = null
+      
+      container.networkBindings.each { networkBinding->
+        println "[${networkBinding.containerPort}] == [${configHandlerPort}]"
+        
+        if(networkBinding.containerPort.equals(configHandlerPort)) {
+          println "EQUAL"
+        }
+        
+        if(networkBinding.containerPort == configHandlerPort
+            && networkBinding.protocol.equals("tcp")) {
+          hostPort = networkBinding.hostPort
+        }
+      }
+      
+      def configHandlerUrl = "http://${ec2Instance.privateIpAddress}:${hostPort}${configHandlerPath}"
+      println configHandlerUrl
+    }
+        
+    
   }
+}
+
+def getContainerDefinitionsMap(def tasks, def taskDefinitionMap) {
+  
+  def containerDefinitions = new HashMap()
+  
+  tasks.each { task->
+        
+    def taskDefinition = taskDefinitionMap.get(task.taskDefinitionArn)
+    def taskContainerDefinitions = taskDefinition.containerDefinitions
+    taskContainerDefinitions.each { containerDefinition->
+      containerDefinitions.put(containerDefinition.name, containerDefinition)
+    }
+  }
+  
+  return containerDefinitions
 }
 
 def getTasksForCluster() {
@@ -92,7 +135,7 @@ def getTaskDefinitionMap(def tasks) {
     }
   }
   
-  // Put task definitions in a map <taskDefinitonArn, taskDefinition>
+  // Put task definitions in a map <taskDefinitionArn, taskDefinition>
   def taskDefinitionMap = new HashMap()
   taskDefinitionArns.each { taskDefinitionArn->
     def descTaskDefResult = ecsClient.describeTaskDefinition(
