@@ -48,7 +48,11 @@ tasks.each { task->
     
     containerDefinition.environment.each { keyValuePair->
       if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PORT")) {
-        configHandlerPort = Integer.parseInt(keyValuePair.value)
+        try {
+          configHandlerPort = Integer.parseInt(keyValuePair.value)
+        } catch(Exception e) {
+          LOG.error("Unable to parse ECS_CONFIG_HANDLER_PORT ${keyValuePair.value}")
+        }
       }
       if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PATH")) {
         configHandlerPath = keyValuePair.value
