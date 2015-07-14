@@ -48,7 +48,7 @@ tasks.each { task->
     
     containerDefinition.environment.each { keyValuePair->
       if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PORT")) {
-        configHandlerPort = keyValuePair.value
+        configHandlerPort = Integer.parseInt(keyValuePair.value)
       }
       if(keyValuePair.name.equals("ECS_CONFIG_HANDLER_PATH")) {
         configHandlerPath = keyValuePair.value
@@ -60,12 +60,7 @@ tasks.each { task->
       def hostPort = null
       
       container.networkBindings.each { networkBinding->
-        println "[${networkBinding.containerPort}] == [${configHandlerPort}]"
-        
-        if(networkBinding.containerPort.equals(configHandlerPort)) {
-          println "EQUAL"
-        }
-        
+
         if(networkBinding.containerPort == configHandlerPort
             && networkBinding.protocol.equals("tcp")) {
           hostPort = networkBinding.hostPort
