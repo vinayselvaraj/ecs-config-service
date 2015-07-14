@@ -1,5 +1,6 @@
 import org.apache.log4j.*
 import groovy.util.logging.*
+import groovy.json.*
 import com.amazonaws.services.ecs.*
 import com.amazonaws.services.ecs.model.*
 import com.amazonaws.services.ec2.*
@@ -38,12 +39,13 @@ def containerDefinitionMap = getContainerDefinitionsMap(tasks, taskDefinitionMap
 tasks.each { task->
   def containers = task.containers
   containers.each { container->
+    
     def containerInstance = containerInstanceMap.get(task.containerInstanceArn)
     def ec2Instance = ec2InstanceMap.get(containerInstance.ec2InstanceId)
     def containerDefinition = containerDefinitionMap.get(container.name)
     
     // Check if container definition contains the cfg handler url env
-    def configHandlerPort = null
+    def configHandlerPort = 80
     def configHandlerPath = null
     
     containerDefinition.environment.each { keyValuePair->
@@ -59,7 +61,9 @@ tasks.each { task->
       }
     }
     
-    if(configHandlerPort != null && configHandlerPath != null) {
+    def running = container.lastStatus.equals("RUNNING")
+    
+    if(configHandlerPort != null && configHandlerPath != null && running) {
       
       def hostPort = null
       
@@ -70,6 +74,17 @@ tasks.each { task->
           hostPort = networkBinding.hostPort
         }
       }
+      
+      def containerData = new HashMap()
+      containerData.put("instance-id", ec2Instance.instanceId)
+      containerData.put("private-ipv4", ec2Instance.privateIpAddress)
+      containerData.put("public-ipv4", ec2Instance.publicIpAddress)
+      containerData.put("container-arn", container.containerArn)
+      containerData.put("container-instance-arn", containerInstance.containerInstanceArn)
+      containerData.put("task-arn", task.taskArn)
+      containerData.put("network-bindings", container.networkBindings)
+
+      println new JsonBuilder(containerData)
       
       def configHandlerUrl = "http://${ec2Instance.privateIpAddress}:${hostPort}${configHandlerPath}"
       println configHandlerUrl
