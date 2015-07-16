@@ -1,4 +1,11 @@
 import org.apache.log4j.*
+
+import java.util.concurrent.*
+
+import org.apache.http.impl.client.*
+import org.apache.http.entity.*
+import org.apache.http.client.methods.*
+import org.apache.http.client.config.RequestConfig
 import groovy.util.logging.*
 import groovy.json.*
 import com.amazonaws.services.ecs.*
@@ -11,6 +18,8 @@ LOG = Logger.getInstance(getClass())
 // Read cluster name from environment variable
 ENV          = System.getenv()
 CLUSTER_NAME = ENV['CLUSTER_NAME']
+
+MAX_THREADS = 512
 
 if(CLUSTER_NAME == null) {
   LOG.fatal("Environment variable CLUSTER_NAME cannot be null")
@@ -35,6 +44,15 @@ def taskDefinitionMap = getTaskDefinitionMap(tasks)
 
 // Get map of container definitions
 def containerDefinitionMap = getContainerDefinitionsMap(tasks, taskDefinitionMap)
+
+// Initialize HttpClient
+def httpClient = HttpClients.createDefault()
+def httpRequestConfig = RequestConfig.custom()
+        .setSocketTimeout(1000)
+        .setConnectTimeout(1000)
+        .build()
+
+def executorService = Executors.newFixedThreadPool(MAX_THREADS)
 
 tasks.each { task->
   def containers = task.containers
@@ -84,15 +102,31 @@ tasks.each { task->
       containerData.put("task-arn", task.taskArn)
       containerData.put("network-bindings", container.networkBindings)
 
-      println new JsonBuilder(containerData)
+      def jsonString = new JsonBuilder(containerData).toString()
       
       def configHandlerUrl = "http://${ec2Instance.privateIpAddress}:${hostPort}${configHandlerPath}"
-      println configHandlerUrl
+      def httpPost = new HttpPost(configHandlerUrl)
+      httpPost.setConfig(httpRequestConfig)
+      httpPost.setEntity(new StringEntity(jsonString, ContentType.create("application/json")))
+      
+      executorService.execute(new Runnable() {
+        public void run() {
+          try {
+            def response = httpClient.execute(httpPost)
+            LOG.info("Posted data to endpoint: ${configHandlerUrl}")
+            println configHandlerUrl
+          } catch(Exception e) {
+            LOG.error("Caught exception while posting data to endpoint ${configHandlerUrl}: ${e}")
+          }
+        }
+      });
+      
     }
-        
-    
   }
 }
+
+// Wait for the executor service to stop
+executorService.shutdown()
 
 def getContainerDefinitionsMap(def tasks, def taskDefinitionMap) {
   
